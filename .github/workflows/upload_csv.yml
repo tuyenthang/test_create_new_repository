@@ -1,0 +1,62 @@
+name: Collect comments in pull requests from peer review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull Request number'
+        required: true
+
+jobs:
+  collect-comments:
+    # runs-on: [ self-hosted, autoscaling-runner ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Collect PR comments
+        run: |
+          PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          echo "Comments from PR #$PR_NUMBER:"
+          
+          COMMENTS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                       "${GITHUB_API_URL}/repos/${{ github.repository }}/pulls/$PR_NUMBER/comments")
+         
+          echo "GitHub API Response:"
+          echo "$COMMENTS"
+          
+          # Debug: Print the length of COMMENTS
+          echo "Length of COMMENTS: ${#COMMENTS}"
+          # Check if there are no comments
+          if [ -z "$COMMENTS" ]; then
+            echo "There are no comments" >> comments.csv
+          else
+            # Initialize variables to track the current file
+            CURRENT_FILE=""
+  
+            # Use jq to process each COMMENT
+            echo "$COMMENTS" | jq -r -c '.[] | "\(.path), (\(.position), 0) #todo \(.body)"' | while IFS= read -r COMMENT; do
+              FILE=$(echo "$COMMENT" | cut -d',' -f1)
+        
+              # Print the filename only if it's a new file
+              if [ "$FILE" != "$CURRENT_FILE" ]; then
+                CURRENT_FILE="$FILE"
+                echo "$CURRENT_FILE" >> comments.csv  # Write the filename to the CSV file
+              fi
+              
+              # Print the comment
+              echo "$COMMENT" | cut -d',' -f2- >> comments.csv
+            done
+          fi
+          
+      # TODO: Upload CSV should be run in a separate job
+      - name: Upload CSV to workspace
+        uses: actions/upload-artifact@v2
+        with:
+          name: comments
+          path: comments.csv
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
