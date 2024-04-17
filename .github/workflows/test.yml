@@ -1,0 +1,34 @@
+name: Your Workflow
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize  # This type is triggered when a new commit is pushed to the branch of the pull request
+  workflow_dispatch:
+
+jobs:
+  your-job:
+    runs-on: ubuntu-latest
+
+
+    steps:
+    - name: Install dependencies
+      run: npm install -g actions/http-request@v2
+    
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Get PR number
+      id: pr_number
+      uses: actions/http-request@v2
+      with:
+        url: https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.number }}
+        method: GET
+        headers:
+          Authorization: ${{ secrets.GITHUB_TOKEN }}
+      env:
+        PR_NUMBER: ${{fromJson(steps.pr_number.outputs.data).number}}
+
+    - name: Use PR number
+      run: echo "The pull request number is $PR_NUMBER"

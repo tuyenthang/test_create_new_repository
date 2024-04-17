@@ -1,0 +1,79 @@
+# This is a basic workflow to help you get started with Actions
+
+name: collect comments
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  pull_request:
+    types:
+      - opened
+      - closed
+  # issue_comment:
+    #types: [created, deleted]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  collect-comments:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Debug
+        run: cat $GITHUB_EVENT_PATH
+        
+      # - name: debug GITHUB_REF
+        # run: cat $GITHUB_REF
+
+      - name: Find PR number
+        run: |
+          PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+          echo "Comments from PR #$PR_NUMBER:"
+
+          #PR_NUMBER1=$(echo $GITHUB_REF | awk 'BEGIN { FS = "/" } ; { print $3 }')
+          #echo "Comments from PR #$PR_NUMBER1:"
+        
+
+      - name: Collect PR comments
+        run: |
+          PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+          # PR_NUMBER=$(echo $GITHUB_REF | awk 'BEGIN { FS = "/" } ; { print $3 }')
+          COMMENTS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                       "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER/comments")
+          echo "Comments from PR #$PR_NUMBER:"
+
+          echo "User,File,Line,Comment" > ${{ github.workspace }}/comments.csv
+          # echo "$COMMENTS" | jq -r -c '.[] | "User: \(.user.login), Comment: \(.body)"'
+          # echo "$COMMENTS" | jq -r -c '.[] | "User: \(.user.login), Comment: \(.body), File: \(.path), Line: \(.position)"'
+          echo "$COMMENTS" | jq -r -c '.[] | "User: \(.user.login), File: \(.path), Line: \(.position), Comment: \(.body)"' >> ${{ github.workspace }}/comments.csv
+      - name: Current location 0
+        run: pwd
+  
+  upload-csv:
+    needs: collect-comments
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+      
+      - name: Change working directory
+        run: cd ${{ github.workspace }}
+
+      - name: Current location
+        run: pwd
+
+      - name: Upload CSV
+        uses: actions/upload-artifact@v2
+        with:
+          name: comments
+          path: ${{ github.workspace }}/comments.csv
+      
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
